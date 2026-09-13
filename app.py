@@ -585,7 +585,7 @@ if video is not None:
 
                         "longitude": 77,
 
-                        "address": None
+                        "address": "Barakhamba Road, New Delhi"
 
                     },
 
@@ -617,7 +617,7 @@ if video is not None:
                     "evidence": {
 
                         "imageUrl":
-                            None
+                            null
 
                     },
 
@@ -625,10 +625,10 @@ if video is not None:
                     "metadata": {
 
                         "offendingVehicleReg":
-                            plate_number,
+                            "DL01AB1234",
 
                         "offendingVehicleDetails":
-                            vehicle_type
+                            "White Sedan"
 
                     }
 

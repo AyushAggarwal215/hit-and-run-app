@@ -583,9 +583,9 @@ if video is not None:
 
                     "location": {
 
-                        "latitude": None,
+                        "latitude": 26,
 
-                        "longitude": None,
+                        "longitude": 77,
 
                         "address": None
 

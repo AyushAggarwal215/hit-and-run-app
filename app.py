@@ -33,8 +33,8 @@ st.set_page_config(
 st.title("🚨 Hit-and-Run Detection System")
 
 st.write(
-    "Upload a transport-bus video. The system will automatically "
-    "detect vehicles, identify a possible hit-and-run, detect the "
+    "Upload a transport-bus video. The system will detect "
+    "vehicles, identify a possible hit-and-run, read the "
     "number plate and send the result to the backend."
 )
 
@@ -106,7 +106,7 @@ if video is not None:
 
 
         # ====================================================
-        # TRACK HISTORY
+        # TRACKING DATA
         # ====================================================
 
         tracks = {}
@@ -139,13 +139,10 @@ if video is not None:
 
             boxes = results[0].boxes
 
-
             if boxes.id is not None:
 
                 ids = boxes.id.cpu().numpy()
-
                 classes = boxes.cls.cpu().numpy()
-
                 xyxy = boxes.xyxy.cpu().numpy()
 
                 current_objects = []
@@ -158,27 +155,25 @@ if video is not None:
                 ):
 
                     obj_id = int(obj_id)
-
                     cls = int(cls)
 
                     x1, y1, x2, y2 = box
 
                     cx = (x1 + x2) / 2
-
                     cy = (y1 + y2) / 2
 
 
                     # ----------------------------------------
-                    # Calculate movement speed in pixels/frame
+                    # Calculate movement
                     # ----------------------------------------
 
                     previous = tracks.get(obj_id)
 
-                    speed = 0
+                    speed = 0.0
 
                     if previous is not None:
 
-                        px, py, pf = previous
+                        px, py, _ = previous
 
                         speed = (
                             (cx - px) ** 2 +
@@ -240,7 +235,6 @@ if video is not None:
                     ):
 
                         a = current_objects[i]
-
                         b = current_objects[j]
 
 
@@ -250,8 +244,6 @@ if video is not None:
                         ) ** 0.5
 
 
-                        # Possible collision
-
                         if distance < 100:
 
                             collision_events.append({
@@ -260,7 +252,9 @@ if video is not None:
 
                                 "a": a,
 
-                                "b": b
+                                "b": b,
+
+                                "distance": distance
 
                             })
 
@@ -364,11 +358,10 @@ if video is not None:
                 temp_video.name
             )
 
-
             plate_results = []
 
 
-            # Search frames around collision
+            # Search around collision
 
             start_frame = max(
                 0,
@@ -397,20 +390,15 @@ if video is not None:
                     break
 
 
-                # --------------------------------------------
-                # Plate detector
-                # --------------------------------------------
+                # ====================================================
+                # PLATE DETECTOR
+                # ====================================================
 
                 results = plate_model.predict(
-
                     frame,
-
                     imgsz=640,
-
                     conf=0.15,
-
                     verbose=False
-
                 )
 
 
@@ -433,16 +421,13 @@ if video is not None:
                         )
 
 
-                        # ------------------------------------
-                        # Crop plate
-                        # ------------------------------------
+                        # ====================================================
+                        # CROP PLATE
+                        # ====================================================
 
                         crop = frame[
-                            max(0, y1):
-                            max(y1 + 1, y2),
-
-                            max(0, x1):
-                            max(x1 + 1, x2)
+                            max(0, y1):max(y1 + 1, y2),
+                            max(0, x1):max(x1 + 1, x2)
                         ]
 
 
@@ -450,9 +435,9 @@ if video is not None:
                             continue
 
 
-                        # ------------------------------------
-                        # Resize plate for OCR
-                        # ------------------------------------
+                        # ====================================================
+                        # UPSCALE
+                        # ====================================================
 
                         crop = cv2.resize(
                             crop,
@@ -463,13 +448,14 @@ if video is not None:
                         )
 
 
-                        # ------------------------------------
+                        # ====================================================
                         # OCR
-                        # ------------------------------------
+                        # ====================================================
 
                         ocr_results = reader.readtext(
                             crop,
-                            detail=1
+                            detail=1,
+                            allowlist="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
                         )
 
 
@@ -485,8 +471,8 @@ if video is not None:
                             if len(cleaned) >= 5:
 
                                 combined_confidence = (
-                                    float(ocr_conf) *
-                                    plate_detection_conf
+                                    float(ocr_conf)
+                                    * plate_detection_conf
                                 )
 
 
@@ -512,6 +498,11 @@ if video is not None:
             # STEP 5 — SELECT BEST PLATE
             # ====================================================
 
+            plate_number = None
+
+            plate_confidence = 0.0
+
+
             if len(plate_results) > 0:
 
                 plate_results.sort(
@@ -519,9 +510,7 @@ if video is not None:
                     reverse=True
                 )
 
-
                 best_plate = plate_results[0]
-
 
                 plate_number = best_plate["plate"]
 
@@ -531,264 +520,240 @@ if video is not None:
                 )
 
 
-                # ====================================================
-                # VEHICLE TYPE
-                # ====================================================
+            # ====================================================
+            # VEHICLE TYPE
+            # ====================================================
 
-                vehicle_class = offender_box["class"]
-
-
-                vehicle_type_map = {
-
-                    2: "car",
-
-                    3: "motorcycle",
-
-                    5: "bus",
-
-                    7: "truck"
-
-                }
+            vehicle_class = offender_box["class"]
 
 
-                vehicle_type = vehicle_type_map.get(
-                    vehicle_class,
-                    "vehicle"
-                )
+            vehicle_type_map = {
+
+                2: "car",
+
+                3: "motorcycle",
+
+                5: "bus",
+
+                7: "truck"
+
+            }
 
 
-                # ====================================================
-                # CREATE BACKEND JSON
-                # ====================================================
-
-                payload = {
-
-                    "eventType":
-                        "HIT_AND_RUN",
+            vehicle_type = vehicle_type_map.get(
+                vehicle_class,
+                "vehicle"
+            )
 
 
-                    "busId":
-                        "BUS_RENDER_TEST_154",
+            # ====================================================
+            # CREATE BACKEND PAYLOAD
+            # ====================================================
 
+            payload = {
 
-                    "cameraId":
-                        "CAM_FRONT",
+                "eventType": "HIT_AND_RUN",
 
+                "busId": BUS_ID,
 
-                    "timestamp":
-                        "2026-09-13T15:10:00Z",
+                "cameraId": CAMERA_ID,
 
+                "timestamp": datetime.now(
+                    timezone.utc
+                ).isoformat(),
 
-                    "location": {
+                "location": {
 
-                        "latitude": 26,
+                    "latitude": None,
 
-                        "longitude": 77,
+                    "longitude": None,
 
-                        "address": "Barakhamba Road, New Delhi"
+                    "address": None
 
-                    },
+                },
 
+                "detection": {
 
-                    "detection": {
+                    "confidence": float(
+                        plate_confidence
+                    ),
 
-                        "confidence":
-                            float(
-                                0.91
-                            ),
+                    "severity": "CRITICAL"
 
-                        "severity":
-                            "CRITICAL"
+                },
 
-                    },
+                "model": {
 
+                    "name":
+                        "hit-and-run-yolo",
 
-                    "model": {
+                    "version":
+                        "1.0"
 
-                        "name":
-                            "hit-and-run-yolo",
+                },
 
-                        "version":
-                            "1.0"
+                "evidence": {
 
-                    },
+                    "imageUrl": None
 
+                },
 
-                    "evidence": {
+                "metadata": {
 
-                        "imageUrl":
-                            null
+                    "offendingVehicleReg":
+                        plate_number,
 
-                    },
-
-
-                    "metadata": {
-
-                        "offendingVehicleReg":
-                            "DL01AB1234",
-
-                        "offendingVehicleDetails":
-                            "White Sedan"
-
-                    }
+                    "offendingVehicleDetails":
+                        vehicle_type
 
                 }
 
-
-                # ====================================================
-                # SEND RESULT TO BACKEND
-                # ====================================================
-
-                try:
-
-                    response = requests.post(
-
-                        BACKEND_URL,
-
-                        json=payload,
-
-                        timeout=15
-
-                    )
+            }
 
 
-                    backend_success = (
-                        response.status_code
-                        in [200, 201]
-                    )
+            # ====================================================
+            # SEND TO BACKEND
+            # ====================================================
+
+            st.subheader("📡 Sending Event to Backend...")
+
+            backend_success = False
+
+            backend_status = None
+
+            backend_response_text = ""
 
 
-                except Exception as e:
+            try:
 
-                    backend_success = False
+                response = requests.post(
 
-                    backend_error = str(e)
+                    BACKEND_URL,
 
+                    json=payload,
 
-                # ====================================================
-                # STREAMLIT RESULT
-                # ====================================================
+                    headers={
+                        "Content-Type": "application/json"
+                    },
 
-                st.success(
-                    "🚨 HIT-AND-RUN DETECTED"
+                    timeout=30
+
                 )
 
 
-                st.markdown("---")
+                backend_status = response.status_code
+
+                backend_response_text = response.text
 
 
-                st.subheader(
-                    "Incident Details"
-                )
+                if response.status_code in [200, 201, 202]:
 
-
-                col1, col2 = st.columns(2)
-
-
-                with col1:
-
-                    st.write(
-                        f"**Offender Track ID:** "
-                        f"{offender_id}"
-                    )
-
-                    st.write(
-                        f"**Registration Number:** "
-                        f"{plate_number}"
-                    )
-
-                    st.write(
-                        f"**Vehicle Type:** "
-                        f"{vehicle_type}"
-                    )
-
-
-                with col2:
-
-                    st.write(
-                        f"**OCR Confidence:** "
-                        f"{plate_confidence * 100:.1f}%"
-                    )
-
-                    st.write(
-                        f"**Video Timestamp:** "
-                        f"{video_timestamp}"
-                    )
-
-
-                st.markdown("---")
-
-
-                # ====================================================
-                # SHOW JSON
-                # ====================================================
-
-                st.subheader(
-                    "📡 Backend Payload"
-                )
-
-                st.json(payload)
-
-
-                # ====================================================
-                # BACKEND STATUS
-                # ====================================================
-
-                if backend_success:
+                    backend_success = True
 
                     st.success(
-                        "✅ Result successfully sent "
-                        "to the website backend."
+                        f"✅ Backend accepted the event "
+                        f"(HTTP {response.status_code})"
                     )
 
                 else:
 
                     st.error(
-                        "❌ Detection completed, "
-                        "but the result could not be "
-                        "sent to the backend."
+                        f"❌ Backend rejected the event "
+                        f"(HTTP {response.status_code})"
                     )
 
-                    if not backend_success:
-
-                        try:
-
-                            st.write(
-                                "Backend response:",
-                                response.text
-                            )
-
-                        except:
-
-                            pass
+                    st.code(
+                        response.text
+                    )
 
 
-                # ====================================================
-                # FINAL ALERT
-                # ====================================================
-
-                st.markdown("---")
+            except requests.exceptions.RequestException as e:
 
                 st.error(
-                    f"""
-🚨 HIT-AND-RUN ALERT
-
-Vehicle Track ID : {offender_id}
-Registration     : {plate_number}
-Vehicle Type     : {vehicle_type}
-OCR Confidence   : {plate_confidence * 100:.1f}%
-Video Timestamp  : {video_timestamp}
-"""
+                    "❌ Could not connect to backend."
                 )
 
+                st.code(
+                    str(e)
+                )
+
+
+            # ====================================================
+            # SHOW DETECTION RESULT
+            # ====================================================
+
+            st.markdown("---")
+
+            if plate_number is not None:
+
+                st.success(
+                    "🚨 HIT-AND-RUN DETECTED"
+                )
+
+                st.write(
+                    f"**Offender Track ID:** "
+                    f"{offender_id}"
+                )
+
+                st.write(
+                    f"**Registration Number:** "
+                    f"{plate_number}"
+                )
+
+                st.write(
+                    f"**Vehicle Type:** "
+                    f"{vehicle_type}"
+                )
+
+                st.write(
+                    f"**OCR Confidence:** "
+                    f"{plate_confidence * 100:.1f}%"
+                )
+
+                st.write(
+                    f"**Video Timestamp:** "
+                    f"{video_timestamp}"
+                )
 
             else:
 
                 st.warning(
-                    "Hit-and-run candidate detected, "
-                    "but the number plate could not "
-                    "be read clearly."
+                    "🚨 Hit-and-run candidate detected, "
+                    "but the number plate could not be "
+                    "read clearly."
                 )
 
+                st.write(
+                    f"**Offender Track ID:** "
+                    f"{offender_id}"
+                )
+
+                st.write(
+                    f"**Vehicle Type:** "
+                    f"{vehicle_type}"
+                )
+
+                st.write(
+                    f"**Video Timestamp:** "
+                    f"{video_timestamp}"
+                )
+
+
+            # ====================================================
+            # SHOW EXACT JSON SENT
+            # ====================================================
+
+            st.markdown("---")
+
+            st.subheader(
+                "📦 JSON Sent to Backend"
+            )
+
+            st.json(payload)
+
+
+            # ====================================================
+            # CLEANUP
+            # ====================================================
 
             os.unlink(temp_video.name)

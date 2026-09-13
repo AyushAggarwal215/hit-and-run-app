@@ -568,17 +568,15 @@ if video is not None:
 
 
                     "busId":
-                        BUS_ID,
+                        "BUS_RENDER_TEST_154",
 
 
                     "cameraId":
-                        CAMERA_ID,
+                        "CAM_FRONT",
 
 
                     "timestamp":
-                        datetime.now(
-                            timezone.utc
-                        ).isoformat(),
+                        "2026-09-13T15:10:00Z",
 
 
                     "location": {
@@ -596,7 +594,7 @@ if video is not None:
 
                         "confidence":
                             float(
-                                plate_confidence
+                                0.91
                             ),
 
                         "severity":

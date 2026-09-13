@@ -5,6 +5,8 @@ import os
 import re
 import easyocr
 from ultralytics import YOLO
+import requests
+from datetime import datetime, timezone
 
 st.set_page_config(page_title="Hit-and-Run Detection", layout="wide")
 

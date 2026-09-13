@@ -1,6 +1,6 @@
 import streamlit as st
-import cv2
 import numpy as np
+from PIL import Image
 import easyocr
 from ultralytics import YOLO
 
@@ -12,39 +12,41 @@ st.set_page_config(
 st.title("🚨 Hit-and-Run Detection")
 st.write("License Plate Detection + OCR")
 
+
 @st.cache_resource
 def load_model():
     return YOLO("best.pt")
+
 
 @st.cache_resource
 def load_ocr():
     return easyocr.Reader(["en"], gpu=False)
 
+
 model = load_model()
 reader = load_ocr()
+
 
 uploaded_file = st.file_uploader(
     "Upload a vehicle image",
     type=["jpg", "jpeg", "png"]
 )
 
+
 if uploaded_file:
 
-    file_bytes = np.asarray(
-        bytearray(uploaded_file.read()),
-        dtype=np.uint8
-    )
-
-    image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+    image = Image.open(uploaded_file).convert("RGB")
 
     st.image(
-        cv2.cvtColor(image, cv2.COLOR_BGR2RGB),
+        image,
         caption="Uploaded Image",
         use_container_width=True
     )
 
+    image_array = np.array(image)
+
     results = model.predict(
-        image,
+        image_array,
         imgsz=640,
         conf=0.15,
         verbose=False
@@ -59,7 +61,7 @@ if uploaded_file:
             box.xyxy[0].cpu().numpy()
         )
 
-        plate = image[y1:y2, x1:x2]
+        plate = image_array[y1:y2, x1:x2]
 
         if plate.size == 0:
             continue
@@ -78,17 +80,23 @@ if uploaded_file:
                     (text, confidence)
                 )
 
+
     if detections:
 
         st.success("License plate detected!")
 
         for text, confidence in detections:
-            st.subheader(f"🚗 Registration: {text}")
+
+            st.subheader(
+                f"🚗 Registration: {text}"
+            )
+
             st.write(
                 f"OCR Confidence: {confidence:.2%}"
             )
 
     else:
+
         st.warning(
             "No readable license plate detected."
         )
